@@ -12,7 +12,9 @@ def transform_inputs(task_list: List[TaskInput]) -> dict:
     processed_tasks = {}
 
     for task in task_list:
-        expected_duration = task.optimistic + (4 * task.most_likely) + task.pessimistic
+        expected_duration = (
+            task.optimistic + (4 * task.most_likely) + task.pessimistic
+        ) / 6
 
         expected_duration = round(expected_duration, 2)
 
@@ -55,7 +57,7 @@ def calc_forward_pass(tasks: dict) -> float:
             task["es"] = float(0)
         else:
             valid_preds = [p for p in task["predecessors"] if p in tasks]
-            tasks["es"] = (
+            task["es"] = (
                 max(tasks[p]["ef"] for p in valid_preds) if valid_preds else float(0)
             )
 
@@ -98,7 +100,7 @@ def calc_backward_pass(tasks: dict, project_duration: float):
 
         if not successors[task_id]:
             # if an activity has no successors, it is the last nodes
-            tasks["lf"] = project_duration
+            task["lf"] = project_duration
         else:
             # for upstream tasks, LF is the minimum LS of all immediate successors
             task["lf"] = min([tasks[s]["ls"] for s in successors[task_id]])
