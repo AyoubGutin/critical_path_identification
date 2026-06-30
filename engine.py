@@ -11,16 +11,16 @@ def transform_inputs(task_list: List[TaskInput]) -> dict:
 
     processed_tasks = {}
 
-    for t in task_list:
-        expected_duration = t.optimistic + (4 * t.most_likely) + t.pessimistic
+    for task in task_list:
+        expected_duration = task.optimistic + (4 * task.most_likely) + task.pessimistic
 
         expected_duration = round(expected_duration, 2)
 
-        pred_string = t.predecessors.strip() if t.predecessors else ""
+        pred_string = task.predecessors.strip() if task.predecessors else ""
         preds = [p.strip() for p in pred_string.split(",")] if pred_string else []
 
-        processed_tasks[t.id.strip()] = {
-            "name": t.name,
+        processed_tasks[task.id.strip()] = {
+            "name": task.name,
             "duration": expected_duration,
             "predecessors": preds,
             "es": 0,
@@ -41,11 +41,11 @@ def calc_forward_pass(tasks: dict) -> float:
     """
     visited = set()
 
-    def process_task(t_id: str):
-        if t_id in visited or t_id not in tasks:
+    def process_task(task_id: str):
+        if task_id in visited or task_id not in tasks:
             return
 
-        task = tasks[t_id]
+        task = tasks[task_id]
 
         for pred in task["predecessors"]:
             if pred in tasks and pred not in visited:
@@ -60,10 +60,67 @@ def calc_forward_pass(tasks: dict) -> float:
             )
 
         task["ef"] = round(task["es"] + task["duration"], 2)
-        visited.add(t_id)
+        visited.add(task_id)
 
-    for t_id in list(tasks.keys()):
-        process_task(t_id)
+    for task_id in list(tasks.keys()):
+        process_task(task_id)
 
-    project_duration = max([t["ef"] for t in tasks.values()]) if tasks else 0.0
+    project_duration = max([task["ef"] for task in tasks.values()]) if tasks else 0.0
     return round(project_duration, 2)
+
+
+def calc_backward_pass(tasks: dict, project_duration: float):
+    """
+    Calcs the backward pass (LS+LF) for all tasks in the network
+
+    Isolates the Total Float and identifies the critical path chain
+    """
+
+    # To move backward, look at what tasks follow a given task
+    successors = {task_id: [] for task_id in tasks}
+
+    for task_id, task in tasks.items():
+        for pred in task["predecessors"]:
+            if pred in successors:
+                successors[pred].append(task_id)
+
+    visited = set()
+
+    def process_task_backward(task_id: str):
+        if task_id in visited or task_id not in tasks:
+            return
+
+        task = tasks[task_id]
+
+        for successor in successors[task_id]:
+            if successor not in visited:
+                process_task_backward(successor)
+
+        if not successors[task_id]:
+            # if an activity has no successors, it is the last nodes
+            tasks["lf"] = project_duration
+        else:
+            # for upstream tasks, LF is the minimum LS of all immediate successors
+            task["lf"] = min([tasks[s]["ls"] for s in successors[task_id]])
+
+        # LS is the latest finish deadline minus the PERT duration
+        task["ls"] = round(task["lf"] - task["duration"], 2)
+
+        # Total float is the difference between late boundaries and early boundaries
+        task["float"] = round(task["ls"] - task["es"], 2)
+
+        if abs(task["float"]) < 0.01:
+            task["float"] = 0.0
+
+        visited.add(task_id)
+
+    for task_id in list(tasks.keys()):
+        process_task_backward(task_id)
+
+    critical_path = [
+        task_id for task_id, task in tasks.items() if task["float"] == float(0)
+    ]
+
+    critical_path.sort(key=lambda x: tasks[x]["es"])
+
+    return critical_path
