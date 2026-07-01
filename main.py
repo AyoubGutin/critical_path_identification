@@ -1,7 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, Response
 from fastapi.middleware.cors import CORSMiddleware
 from models import ProjectPayload
-from engine import transform_inputs, calc_forward_pass, calc_backward_pass
+import services
 
 app = FastAPI(title="Critical Path Engine")
 
@@ -14,17 +14,36 @@ app.add_middleware(
 )
 
 
-@app.post("/api/analyse")
-def analyse_project(payload: ProjectPayload):
-    processed_tasks = transform_inputs(payload.tasks)
+@app.get("/api/download-excel")
+def download_excel():
+    template_bytes = services.generate_blank_template()
+    return Response(
+        content=template_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": "attachment; filename=pert_project_template.xlsx"
+        },
+    )
 
-    total_duration = calc_forward_pass(processed_tasks)
 
-    critical_path = calc_backward_pass(processed_tasks, total_duration)
-
+@app.post("/api/upload-excel")
+def upload_excel(file: UploadFile = File(...)):
+    contents = file.file.read()
+    duration, path, tasks = services.process_excel_upload(contents)
     return {
         "status": "success",
-        "total_duration": total_duration,
-        "critical_path": critical_path,
-        "tasks": processed_tasks,
+        "total_duration": duration,
+        "critical_path": path,
+        "tasks": tasks,
+    }
+
+
+@app.post("/api/analyse")
+def analyse_project(payload: ProjectPayload):
+    duration, path, tasks = services.process_manual_analysis(payload.tasks)
+    return {
+        "status": "success",
+        "total_duration": duration,
+        "critical_path": path,
+        "tasks": tasks,
     }
