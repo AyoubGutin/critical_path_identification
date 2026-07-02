@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI, UploadFile, File, Response
 from fastapi.middleware.cors import CORSMiddleware
 from models import ProjectPayload
@@ -5,9 +6,13 @@ import services
 
 app = FastAPI(title="Critical Path Engine")
 
+# Get allowed origins from env var, or use localhost for development
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000")
+allow_origins_list = [origin.strip() for origin in allowed_origins.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allow_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
